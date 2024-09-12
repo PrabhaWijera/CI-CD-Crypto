@@ -4,8 +4,7 @@
 # This workflow uses actions that are not certified by GitHub.
 # They are provided by a third-party and are governed by
 # separate terms of service, privacy policy, and support
-# documentation.
-
+# documentation.  secrets.^/tfamX-j8W5+Td
 name: CI-CD-Crypto
 
 on:
@@ -16,16 +15,56 @@ on:
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
-    - name: Set up JDK 17
-      uses: actions/setup-java@v4
-      with:
-        java-version: '17'
-        distribution: 'temurin'
-        cache: maven
-    - name: Build with Maven
-      run: mvn clean install
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Build with Maven
+        run: mvn clean install
+
+      - name: Build Docker image
+        run: docker build -t your-ec2-instance-ip:5000/crud-application:latest .
+
+      - name: Log in to Docker Registry on EC2
+        run: echo "${{ secrets.^/tfamX-j8W5+Td }}" | docker login your-ec2-instance-ip:5000 --username your-ec2-username --password-stdin
+
+      - name: Push Docker image
+        run: docker push your-ec2-instance-ip:5000/crud-application:latest
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Set up Kubernetes
+        uses: azure/setup-kubectl@v2
+        with:
+          version: 'latest'
+
+      - name: Deploy to Kubernetes
+        run: |
+          kubectl apply -f k8s/deployment-blue.yaml
+          kubectl apply -f k8s/service.yaml
+          kubectl apply -f k8s/ingress.yaml
+
+      - name: Blue-Green Deployment
+        run: |
+          kubectl apply -f k8s/deployment-green.yaml
+          kubectl rollout status deployment/crud-application-green
+
+      - name: Switch Traffic to Green
+        run: |
+          kubectl patch service crud-application -p '{"spec":{"selector":{"app":"crud-application-green"}}}'
+
+      - name: Scale Down Blue
+        run: |
+          kubectl scale deployment crud-application-blue --replicas=0
